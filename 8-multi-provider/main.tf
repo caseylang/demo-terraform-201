@@ -11,7 +11,7 @@ variable "namespace" {
 }
 
 provider "github" {
-  token        = "${var.github_token}"
+  token        = var.github_token
   organization = "placeholder"
 }
 
@@ -22,7 +22,7 @@ provider "aws" {
 data "github_ip_ranges" "test" {}
 
 resource "aws_security_group" "training" {
-  name_prefix = "${var.namespace}"
+  name_prefix = var.namespace
 
   ingress {
     from_port   = 0
@@ -36,48 +36,49 @@ resource "aws_security_group" "training" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
-    # cidr_blocks = ["${data.github_ip_ranges.test.pages}"]
+    # cidr_blocks = data.github_ip_ranges.test.pages
   }
 }
 
 resource "aws_key_pair" "training" {
   key_name   = "${var.identity}-${var.namespace}-key"
-  public_key = "${file("~/.ssh/id_rsa.pub")}"
+  public_key = file("~/.ssh/id_rsa.pub")
 }
 
 resource "aws_instance" "example" {
-  ami           = "${var.ami}"
-  instance_type = "t2.micro"
-  vpc_security_group_ids = ["${aws_security_group.training.id}"]
+  ami                    = var.ami
+  instance_type          = "t2.micro"
+  vpc_security_group_ids = [aws_security_group.training.id]
 
-  key_name = "${aws_key_pair.training.id}"
+  key_name = aws_key_pair.training.id
 
-  tags {
+  tags = {
     Name = "${var.identity}-simple-instance"
   }
 
   connection {
+    host        = coalesce(self.public_ip, self.private_ip)
+    type        = "ssh"
     user        = "ubuntu"
-    private_key = "${file("~/.ssh/id_rsa")}"
+    private_key = file("~/.ssh/id_rsa")
   }
 
   provisioner "remote-exec" {
     inline = [
       "ping -c 5 ${cidrhost(element(data.github_ip_ranges.test.pages, 0), 0)}",
-      "ping -c 5 hashicorp.com"
+      "ping -c 5 hashicorp.com",
     ]
   }
-
 }
 
 output "github_pages_ip_ranges" {
-  value = "${data.github_ip_ranges.test.pages}"
+  value = data.github_ip_ranges.test.pages
 }
 
 output "public_ip" {
-  value = ["${aws_instance.example.*.public_ip}"]
+  value = [aws_instance.example.*.public_ip]
 }
 
 output "public_dns" {
-  value = ["${aws_instance.example.*.public_dns}"]
+  value = [aws_instance.example.*.public_dns]
 }
